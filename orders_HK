@@ -1,0 +1,82 @@
+SELECT
+	--orders.order_date,
+    --shifts.shift_date,
+		to_char(orders.order_date, 'mm/yyyy') AS "months",
+    orders.city,
+    orders.karry_name,
+    orders.fp_name,
+    COALESCE(sum(orders.total_rides), 0::numeric) AS total_rides,
+    COALESCE(sum(orders.total_revenue_rides), 0::numeric) AS total_revenue_rides,
+    COALESCE(sum(orders.orders_picked), 0::numeric) AS orders_picked,
+    COALESCE(sum(orders.total_multiorder_rides), 0::numeric) AS total_multiple_order_rides,
+    COALESCE(sum(orders.total_multiorder_revenue_rides), 0::numeric) AS total_multiple_order_revenue_rides,
+    COALESCE(sum(orders.total_acceptance_to_checkin_distance), 0::double precision) AS total_acceptance_to_checkin_distance,
+    COALESCE(sum(orders.total_dispatched_to_checkout_distance), 0::double precision) AS total_dispatched_to_checkout_distance,
+    COALESCE(sum(orders.total_acceptance_checkin_compensation), 0::double precision) AS total_acceptance_checkin_compensation,
+    COALESCE(sum(orders.total_dispatched_checkout_compensation), 0::double precision) AS total_dispatched_checkout_compensation,
+    COALESCE(sum(orders.total_flat_rate_per_ride_pickup), 0::double precision) AS total_flat_rate_per_ride_pickup,
+    COALESCE(sum(orders.total_flat_rate_additional_dropoff), 0::double precision) AS total_flat_rate_additional_dropoff,
+    COALESCE(sum(shifts.shift_online_hours), 0::double precision) AS shift_online_hours,
+		sum(shifts.shift_online_hours * 6) AS "Number of Working Days",
+    COALESCE(sum(orders.total_karry_earning), 0::double precision) AS total_karry_earning
+   FROM ( SELECT DISTINCT ob_tas_disp_dc.order_date,
+            ob_tas_disp_dc.karry_name,
+            ob_tas_disp_dc.fp_name,
+            ob_tas_disp_dc.city,
+            count(DISTINCT
+                CASE
+                    WHEN ob_tas_disp_dc.ismultiride IS FALSE THEN ob_tas_disp_dc.ride_id
+                    ELSE ob_tas_disp_dc.multiride_id
+                END) AS total_rides,
+            count(DISTINCT
+                CASE
+                    WHEN ob_tas_disp_dc.ride_fare_a <> 0::double precision AND ob_tas_disp_dc.ismultiride IS FALSE THEN ob_tas_disp_dc.ride_id
+                    WHEN ob_tas_disp_dc.ride_fare_a <> 0::double precision AND ob_tas_disp_dc.ismultiride IS TRUE THEN ob_tas_disp_dc.multiride_id
+                    ELSE NULL::bigint
+                END) AS total_revenue_rides,
+            count(ob_tas_disp_dc.order_id) AS total_orders,
+            count(
+                CASE
+                    WHEN NOT (ob_tas_disp_dc.ride_fare_a = 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text) THEN ob_tas_disp_dc.order_id
+                    ELSE NULL::bigint
+                END) AS orders_picked,
+            sum(orderwise_compensation_2023."Acceptance to Check-in Distance (KMs)") AS total_acceptance_to_checkin_distance,
+            sum(orderwise_compensation_2023."Dispatched to Check-Out  Distance (KM)") AS total_dispatched_to_checkout_distance,
+            sum(orderwise_compensation_2023."Compensation for Accepted to Check-in Distance (AED)") AS total_acceptance_checkin_compensation,
+            sum(orderwise_compensation_2023."Dispatch to Check-Out Fare (AED)") AS total_dispatched_checkout_compensation,
+            sum(orderwise_compensation_2023."Flat Charge per Ride Pick-Up (AED)") AS total_flat_rate_per_ride_pickup,
+            sum(orderwise_compensation_2023."Flat Charge for Additional Drop Off (AED)") AS total_flat_rate_additional_dropoff,
+            sum(orderwise_compensation_2023."Total Ride Distance (KM)") AS total_ride_distance,
+            sum(orderwise_compensation_2023."Total Ride Earning (AED)") AS total_karry_earning,
+            count(DISTINCT
+                CASE
+                    WHEN NOT (ob_tas_disp_dc.ride_fare_a = 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text) AND ob_tas_disp_dc.multiple_order_id IS NULL THEN ob_tas_disp_dc.order_id
+                    ELSE NULL::bigint
+                END) AS orders_picked_single_rides,
+            count(
+                CASE
+                    WHEN NOT (ob_tas_disp_dc.ride_fare_a = 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text) AND ob_tas_disp_dc.multiple_order_id IS NOT NULL THEN ob_tas_disp_dc.order_id
+                    ELSE NULL::bigint
+                END) AS orders_picked_multiorder_rides,
+            count(DISTINCT ob_tas_disp_dc.multiple_order_id) AS total_multiorder_rides,
+            count(DISTINCT
+                CASE
+                    WHEN ob_tas_disp_dc.ride_fare_a > 0::double precision THEN ob_tas_disp_dc.multiple_order_id
+                    ELSE NULL::bigint
+                END) AS total_multiorder_revenue_rides,
+            sum(
+                CASE
+                    WHEN NOT (ob_tas_disp_dc.ride_fare_a = 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text) THEN ob_tas_disp_dc.ride_fare_a
+                    ELSE NULL::double precision
+                END) AS total_ride_fare
+           FROM ob_tas_disp_dc
+             JOIN orderwise_compensation_2023 ON ob_tas_disp_dc.order_id = orderwise_compensation_2023."Order ID"
+          WHERE ob_tas_disp_dc.isdeleted IS FALSE AND (ob_tas_disp_dc.ride_status::text <> ALL (ARRAY['assign'::character varying::text, 'submitted'::character varying::text, 'running'::character varying::text, 'draft'::character varying::text]))
+          GROUP BY ob_tas_disp_dc.order_date, ob_tas_disp_dc.karry_name, ob_tas_disp_dc.fp_name, ob_tas_disp_dc.city) orders
+     LEFT JOIN ( SELECT DISTINCT shift_time.shift_date,
+            shift_time.karryname,
+            sum(shift_time.shift_online_min) / 60::double precision AS shift_online_hours
+           FROM shift_time
+         -- WHERE shift_time.shift_date >= '2021-07-01'::date
+          GROUP BY shift_time.shift_date, shift_time.karryname) shifts ON orders.order_date = shifts.shift_date AND orders.karry_name = shifts.karryname
+  GROUP BY   orders.city, orders.karry_name, orders.fp_name, months
