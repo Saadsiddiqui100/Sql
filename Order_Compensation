@@ -1,0 +1,205 @@
+SELECT table_a."Karry ID",
+    table_a."Karry Name",
+    table_a."Fleet Provider Name",
+    table_a."City",
+    table_a."Ride ID",
+    table_a."Multiride ID",
+    table_a."Order ID",
+    table_a."Order Date",
+    table_a."Ride Status",
+    table_a."Dispute Status",
+    table_a."Flat Charge per Ride Pick-Up (AED)",
+    table_a."Flat Charge for Additional Drop Off (AED)",
+    table_a."Acceptance to Check-in Distance (KMs)",
+    table_a."Acceptance to Check-in Rate per KM (AED)",
+    table_a."Compensation for Accepted to Check-in Distance (AED)",
+    table_a."Dispatched to Check-Out  Distance (KM)",
+    table_a."Dispatched to Check-out Fare / km (AED)",
+    table_a."Dispatch to Check-Out Fare (AED)",
+    table_a."Total Ride Distance (KM)",
+    table_a."Total Ride Earning (AED)"
+   FROM ( SELECT abc.karry_id AS "Karry ID",
+            abc.karry_name AS "Karry Name",
+            abc.fp_name AS "Fleet Provider Name",
+            abc.city AS "City",
+            abc."Ride ID",
+            abc."Multiride ID",
+            abc.order_id AS "Order ID",
+            abc.order_date AS "Order Date",
+            abc.ride_status AS "Ride Status",
+                CASE
+                    WHEN abc.time_disputed IS NOT NULL THEN 'Disputed'::text
+                    ELSE NULL::text
+                END AS "Dispute Status",
+            abc."Flat Charge per Ride Pick-Up (AED)",
+            abc."Flat Charge for Additional Drop Off (AED)",
+            abc."Acceptance to Check-in Distance (KMs)",
+            abc."Acceptance to Check-in Rate per KM (AED)",
+            abc."Acceptance to Check-in Distance (KMs)" * abc."Acceptance to Check-in Rate per KM (AED)"::double precision AS "Compensation for Accepted to Check-in Distance (AED)",
+            abc."Dispatched to Check-Out  Distance (KM)",
+            abc."Dispatched to Check-out Fare / km (AED)",
+            abc."Dispatched to Check-Out  Distance (KM)" * abc."Dispatched to Check-out Fare / km (AED)"::double precision AS "Dispatch to Check-Out Fare (AED)",
+            abc."Total Ride Distance (KM)",
+            abc."Acceptance to Check-in Distance (KMs)" * abc."Acceptance to Check-in Rate per KM (AED)"::double precision + abc."Dispatched to Check-Out  Distance (KM)" * abc."Dispatched to Check-out Fare / km (AED)"::double precision + (abc."Flat Charge per Ride Pick-Up (AED)" *
+                CASE
+                    WHEN NOT (abc.ride_fare_a = 0::double precision AND abc.ride_status::text = 'cancelled'::text) THEN 1
+                    ELSE 0
+                END::numeric)::double precision AS "Total Ride Earning (AED)"
+           FROM ( SELECT ob_tas_disp_dc.karry_id,
+                    ob_tas_disp_dc.karry_name,
+                    ob_tas_disp_dc.fp_name,
+                    ob_tas_disp_dc.city,
+                    ob_tas_disp_dc.order_id,
+                    ob_tas_disp_dc.order_date,
+                    ob_tas_disp_dc.ride_id AS "Ride ID",
+                    ob_tas_disp_dc.multiride_id AS "Multiride ID",
+                    ob_tas_disp_dc.time_disputed,
+                    ob_tas_disp_dc.rate_per_order_picked AS "Flat Charge per Ride Pick-Up (AED)",
+                    ob_tas_disp_dc.additionaldropoffmultiorder AS "Flat Charge for Additional Drop Off (AED)",
+                    ob_tas_disp_dc.karry_to_merchant AS "Acceptance to Check-in Distance (KMs)",
+                        CASE
+                            WHEN ob_tas_disp_dc.order_date >= '2021-07-01'::date THEN 0.18
+                            ELSE 0::numeric
+                        END AS "Acceptance to Check-in Rate per KM (AED)",
+                        CASE
+                            WHEN ob_tas_disp_dc.cancelled_with_fare_order_id IS NOT NULL THEN ob_tas_disp_dc.total_distance
+                            ELSE ob_tas_disp_dc.merchant_to_customer
+                        END AS "Dispatched to Check-Out  Distance (KM)",
+                        CASE
+                            WHEN ob_tas_disp_dc.order_date >= '2021-07-01'::date THEN 0.40
+                            ELSE 0.50
+                        END AS "Dispatched to Check-out Fare / km (AED)",
+                        CASE
+                            WHEN ob_tas_disp_dc.ride_fare_a <> 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text THEN ob_tas_disp_dc.total_distance
+                            ELSE ob_tas_disp_dc.merchant_to_customer
+                        END AS "Total Ride Distance (KM)",
+                    ob_tas_disp_dc.ride_fare_a,
+                    ob_tas_disp_dc.ride_status,
+                        CASE
+                            WHEN ob_tas_disp_dc.ride_fare_a <> 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text THEN ob_tas_disp_dc.total_distance
+                            ELSE ob_tas_disp_dc.merchant_to_customer
+                        END * ob_tas_disp_dc.rate_per_km::double precision AS "Total Distance Fare (AED)",
+                        CASE
+                            WHEN NOT (ob_tas_disp_dc.ride_fare_a = 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text) THEN 1
+                            ELSE 0
+                        END AS "Order Picked",
+                    ob_tas_disp_dc.rate_per_order_picked,
+                    ob_tas_disp_dc.rate_per_order_picked *
+                        CASE
+                            WHEN NOT (ob_tas_disp_dc.ride_fare_a = 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text) THEN 1
+                            ELSE 0
+                        END::numeric AS "Total Compensation for Order Picked (AED)",
+                        CASE
+                            WHEN ob_tas_disp_dc.ride_fare_a <> 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text THEN ob_tas_disp_dc.total_distance
+                            ELSE ob_tas_disp_dc.merchant_to_customer
+                        END * ob_tas_disp_dc.rate_per_km::double precision + (ob_tas_disp_dc.rate_per_order_picked *
+                        CASE
+                            WHEN NOT (ob_tas_disp_dc.ride_fare_a = 0::double precision AND ob_tas_disp_dc.ride_status::text = 'cancelled'::text) THEN 1
+                            ELSE 0
+                        END::numeric)::double precision AS "Total Ride Earning (AED)"
+                   FROM ob_tas_disp_dc
+                  WHERE ob_tas_disp_dc.ismultiride IS FALSE AND ob_tas_disp_dc.order_date IS NOT NULL AND ob_tas_disp_dc.isdeleted IS FALSE AND (ob_tas_disp_dc.ride_status::text <> ALL (ARRAY['draft'::character varying::text, 'submitted'::character varying::text, 'running'::character varying::text, 'assign'::character varying::text]))) abc
+          ORDER BY (date_part('year'::text, abc.order_date)), (date_part('month'::text, abc.order_date)), abc.karry_id, abc.karry_name, abc.order_date, abc.city, abc.order_id) table_a
+UNION ALL
+ SELECT abc.karry_id AS "Karry ID",
+    abc.karry_name AS "Karry Name",
+    abc.fp_name AS "Fleet Provider Name",
+    abc.city AS "City",
+    abc."Ride ID",
+    abc."Multiride ID",
+    abc.order_id AS "Order ID",
+    abc.order_date AS "Order Date",
+    abc.ride_status AS "Ride Status",
+        CASE
+            WHEN abc.time_disputed IS NOT NULL THEN 'Disputed'::text
+            ELSE NULL::text
+        END AS "Dispute Status",
+        CASE
+            WHEN abc.ride_status::text <> 'cancelled'::text AND abc.timecheckout = xyz.first_order_delivered OR abc.ride_status::text = 'cancelled'::text AND abc.orderpriority = xyz.first_order_priority THEN abc."Flat Charge per Ride Pick-Up (AED)"
+            ELSE 0::double precision
+        END AS "Flat Charge per Ride Pick-Up (AED)",
+        CASE
+            WHEN abc.ride_status::text <> 'cancelled'::text AND abc.timecheckout <> xyz.first_order_delivered OR abc.ride_status::text = 'cancelled'::text AND abc.orderpriority <> xyz.first_order_priority THEN abc."Flat Charge for Additional Drop Off (AED)"
+            ELSE 0::double precision
+        END AS "Flat Charge for Additional Drop Off (AED)",
+        CASE
+            WHEN abc.ride_status::text <> 'cancelled'::text AND abc.timecheckout = xyz.first_order_delivered OR abc.ride_status::text = 'cancelled'::text AND abc.orderpriority = xyz.first_order_priority THEN abc."Acceptance to Check-in Distance (KMs)"
+            ELSE 0::double precision
+        END AS "Acceptance to Check-in Distance (KMs)",
+    abc."Acceptance to Check-in Rate per KM (AED)",
+        CASE
+            WHEN abc.ride_status::text <> 'cancelled'::text AND abc.timecheckout = xyz.first_order_delivered OR abc.ride_status::text = 'cancelled'::text AND abc.orderpriority = xyz.first_order_priority THEN abc."Compensation for Accepted to Check-in Distance (AED)"
+            ELSE 0::double precision
+        END AS "Compensation for Accepted to Check-in Distance (AED)",
+    abc."Dispatched to Check-Out Distance (KM)" AS "Dispatched to Check-Out  Distance (KM)",
+        CASE
+            WHEN abc.order_date >= '2021-07-01'::date THEN 0.40
+            ELSE 0.50
+        END AS "Dispatched to Check-out Fare / km (AED)",
+        CASE
+            WHEN abc.ride_status::text <> 'cancelled'::text AND abc.timecheckout = xyz.first_order_delivered OR abc.ride_status::text = 'cancelled'::text AND abc.orderpriority = xyz.first_order_priority THEN abc."Dispatch to Check-Out Fare (AED)"
+            ELSE abc.dropoffearnings
+        END AS "Dispatch to Check-Out Fare (AED)",
+        CASE
+            WHEN abc.time_disputed IS NOT NULL THEN abc.total_disputed_distance
+            ELSE
+            CASE
+                WHEN abc."Compensation for Accepted to Check-in Distance (AED)" = 0::double precision THEN 0::double precision
+                ELSE abc."Acceptance to Check-in Distance (KMs)"
+            END + abc."Dispatched to Check-Out Distance (KM)"
+        END AS "Total Ride Distance (KM)",
+        CASE
+            WHEN abc.time_disputed IS NOT NULL THEN abc.karry_compensation
+            ELSE COALESCE(abc."Compensation for Accepted to Check-in Distance (AED)", 0::double precision) + COALESCE(abc."Dispatch to Check-Out Fare (AED)", 0::double precision) + COALESCE(abc."Flat Charge per Ride Pick-Up (AED)", 0::double precision) + COALESCE(abc."Flat Charge for Additional Drop Off (AED)", 0::double precision) + COALESCE(abc.dropoffearnings, 0::double precision)
+        END AS "Total Ride Earning (AED)"
+   FROM ( SELECT ob_tas_disp_dc.karry_id,
+            ob_tas_disp_dc.karry_name,
+            ob_tas_disp_dc.fp_name,
+            ob_tas_disp_dc.city,
+            ob_tas_disp_dc.order_id,
+            ob_tas_disp_dc.order_date,
+            ob_tas_disp_dc.orderpriority,
+            ob_tas_disp_dc.timecheckout,
+            ob_tas_disp_dc.ride_id AS "Ride ID",
+            ob_tas_disp_dc.multiride_id AS "Multiride ID",
+            ob_tas_disp_dc.ride_status,
+            ob_tas_disp_dc.ridepickupcharge AS "Flat Charge per Ride Pick-Up (AED)",
+            ob_tas_disp_dc.additionaldropoffmultiorder AS "Flat Charge for Additional Drop Off (AED)",
+            ob_tas_disp_dc.karry_to_merchant AS "Acceptance to Check-in Distance (KMs)",
+                CASE
+                    WHEN ob_tas_disp_dc.order_date >= '2021-07-01'::date THEN 0.18
+                    ELSE 0::numeric
+                END AS "Acceptance to Check-in Rate per KM (AED)",
+            ob_tas_disp_dc.acceptedtocheckinapprovedearnings AS "Compensation for Accepted to Check-in Distance (AED)",
+                CASE
+                    WHEN ob_tas_disp_dc.cancelled_with_fare_order_id IS NOT NULL THEN ob_tas_disp_dc.total_distance
+                    ELSE ob_tas_disp_dc.merchant_to_customer
+                END AS "Dispatched to Check-Out Distance (KM)",
+                CASE
+                    WHEN ob_tas_disp_dc.order_date >= '2021-07-01'::date THEN 0.40
+                    ELSE 0.50
+                END AS "Dispatched to Check-out Fare / km (AED)",
+            ob_tas_disp_dc.dropoffearnings,
+            ob_tas_disp_dc.dispatchedtodeliveredearnings AS "Dispatch to Check-Out Fare (AED)",
+            ob_tas_disp_dc.karry_compensation,
+            ob_tas_disp_dc.time_disputed,
+                CASE
+                    WHEN ob_tas_disp_dc.time_disputed IS NOT NULL THEN ob_tas_disp_dc.total_distance
+                    ELSE NULL::double precision
+                END AS total_disputed_distance,
+                CASE
+                    WHEN ob_tas_disp_dc.time_disputed IS NOT NULL THEN ob_tas_disp_dc.ride_fare_a
+                    ELSE NULL::double precision
+                END AS total_disputed_fare
+           FROM ob_tas_disp_dc
+          WHERE ob_tas_disp_dc.ismultiride IS TRUE AND ob_tas_disp_dc.order_date IS NOT NULL AND ob_tas_disp_dc.isdeleted IS FALSE AND (ob_tas_disp_dc.ride_status::text <> ALL (ARRAY['draft'::character varying::text, 'submitted'::character varying::text, 'running'::character varying::text, 'assign'::character varying::text]))
+          ORDER BY (date_part('year'::text, ob_tas_disp_dc.order_date)), (date_part('month'::text, ob_tas_disp_dc.order_date)), ob_tas_disp_dc.karry_id, ob_tas_disp_dc.karry_name, ob_tas_disp_dc.order_date, ob_tas_disp_dc.city, ob_tas_disp_dc.multiride_id, ob_tas_disp_dc.timecheckout) abc
+     JOIN ( SELECT ob_tas_disp_dc.multiride_id AS "Multiride ID",
+            max(ob_tas_disp_dc.orderpriority) AS last_order_priority,
+            max(ob_tas_disp_dc.timecheckout) AS last_order_delivered,
+            min(ob_tas_disp_dc.orderpriority) AS first_order_priority,
+            min(ob_tas_disp_dc.timecheckout) AS first_order_delivered
+           FROM ob_tas_disp_dc
+          WHERE ob_tas_disp_dc.ismultiride IS TRUE AND ob_tas_disp_dc.isdeleted IS FALSE AND (ob_tas_disp_dc.ride_status::text <> ALL (ARRAY['assign'::character varying::text, 'running'::character varying::text, 'submitted'::character varying::text, 'draft'::character varying::text]))
+          GROUP BY ob_tas_disp_dc.multiride_id) xyz USING ("Multiride ID")
+  ORDER BY 8, 1, 2, 4, 6, 11 DESC
