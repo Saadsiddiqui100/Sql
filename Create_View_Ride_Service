@@ -1,0 +1,59 @@
+SELECT COUNT(*) FROM "public"."orderbooking" WHERE "ridedate" >= '2022-11-23 00:00:00' AND "ridedate" <= '2022-11-23 23:59:59' and isdeleted=false
+
+144.126.147.141:4000/api/v1/disputesdata?startDate=2022-01-22T07:52:28.798Z&endDate=2022-02-25T07:52:28.798Z
+
+
+CREATE VIEW "public"."subscription_incentive_fuel_report" AS  SELECT DISTINCT ac.city AS "City",
+    to_char((( SELECT date(timezone('Asia/Dubai'::text, sub.createdat)) AS date))::timestamp with time zone, 'YYYY-MM-DD'::text) AS "Subscription Date",
+    ob.karrysequence AS "Karry ID",
+    ( SELECT acc.firstname
+           FROM accounts acc
+          WHERE acc.account_id::text = sub.karryid::text) AS "Karry Name",
+    concat(to_char(timezone('Asia/Dubai'::text, sub.startdate), 'HH12:MI AM'::text), '  To  ', to_char(timezone('Asia/Dubai'::text, sub.enddate), 'HH12:MI AM'::text)) AS "Subscription Slot #",
+    to_char(timezone('Asia/Dubai'::text, sub.starttime), 'HH12:MI:SS AM'::text) AS "Subscription Start Time",
+    to_char(timezone('Asia/Dubai'::text, sub.endtime), 'HH12:MI:SS AM'::text) AS "Subscription End Time",
+    sub.minutes AS "Subscription Minutes",
+    ( SELECT count(DISTINCT obs.multiridesequence) AS count
+           FROM orderbooking obs
+          WHERE obs.subscriptionid::text = sub.subscritionid::text AND obs.isdeleted = false) AS "Total # of Rides",
+    ( SELECT count(o.sequence) AS count
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false) AS "Total # of Orders",
+    ( SELECT sum(o.ridefaredistancemerchanttocustomer) AS sum
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false) AS "Distance (Merchant to Customer)KMs",
+    ( SELECT sum(o.ridefaredistancereachedtomerchant) AS sum
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false) AS "Distance(Return to Merchant)KMs",
+    (( SELECT sum(o.ridefaredistancemerchanttocustomer) AS sum
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false)) + (( SELECT sum(o.ridefaredistancereachedtomerchant) AS sum
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false)) AS "Total Distance Travelled (KMs)",
+    ( SELECT
+                CASE
+                    WHEN sub.createdat >= '2021-12-01'::date AND sub.createdat <= '2022-01-01'::date THEN '0.089'::text
+                    ELSE '0.0843'::text
+                END AS "case") AS "Fuel Rate / KM (AED)",
+    ((( SELECT sum(o.ridefaredistancemerchanttocustomer) AS sum
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false)) + (( SELECT sum(o.ridefaredistancereachedtomerchant) AS sum
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false))) * (( SELECT
+                CASE
+                    WHEN sub.createdat >= '2021-12-01'::date AND sub.createdat <= '2022-01-01'::date THEN 0.089
+                    ELSE 0.0843
+                END AS "case"))::double precision AS "Fuel Paid to Karry (AED)",
+    '0.10'::text AS "Incentive per KM (AED)",
+    (( SELECT sum(o.ridefaredistancemerchanttocustomer) AS sum
+           FROM orderbooking o
+          WHERE o.subscriptionid::text = sub.subscritionid::text AND o.isdeleted = false)) * 0.10::double precision AS "Total Incentive (AED)"
+   FROM subscriptions sub
+     LEFT JOIN orderbooking ob ON ob.subscriptionid::text = sub.subscritionid::text
+     LEFT JOIN accounts ac ON ac.account_id::text = sub.merchantid::text
+  WHERE ob.isdeleted = false
+  GROUP BY ac.city, sub.id, sub.createdat, ob.karrysequence, sub.karryid, sub.endtime, sub.starttime, sub.minutes, ob.ridefaredistancemerchanttocustomer, ob.ridefaredistancereachedtomerchant, ob.rideid, sub.subscritionid, ob.subscriptionid, ob.multiridesequence;
+
+ 
+
+ALTER TABLE "public"."subscription_incentive_fuel_report" OWNER TO "meenal";
